@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import Response
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from bson import ObjectId
@@ -185,13 +186,33 @@ def get_profile(handle: str):
     }
 
 
+# Return a PNG QR code for the given handle
 @app.get("/qr/{handle}")
 def qr_for_handle(handle: str):
-    return {
-        "handle": handle,
-        "payment_link": f"https://tappay.me/{handle}",
-        "deeplink": f"/send?to={handle}",
-    }
+    try:
+        import qrcode
+        from io import BytesIO
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"QR generation unavailable: {e}")
+
+    base = os.getenv("APP_BASE_URL", "https://tappay.me")
+    link = f"{base.rstrip('/')}/{handle}"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(link)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    return Response(content=png_bytes, media_type="image/png")
 
 
 # ----------------------
